@@ -10,13 +10,17 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
  * @param {string} language - The language section to check/create.
  */
 export const checkOrCreateLanguageSection = async (language) => {
-    const languageRef = doc(db, `lessons/${language}`);
-    const docSnapshot = await getDoc(languageRef);
+    try {
+        const languageRef = doc(db, `lessons/${language}`);
+        const docSnapshot = await getDoc(languageRef);
 
-    if (!docSnapshot.exists()) {
-        // If the language section doesn't exist, create it
-        await setDoc(languageRef, { createdAt: new Date() });
-        console.log(`Created language section: ${language}`);
+        if (!docSnapshot.exists()) {
+            await setDoc(languageRef, { createdAt: new Date() });
+            console.log(`Created language section: ${language}`);
+        }
+    } catch (error) {
+        console.error("Error checking/creating language section:", error);
+        throw new Error("Failed to check/create language section.");
     }
 };
 
@@ -25,10 +29,10 @@ export const checkOrCreateLanguageSection = async (language) => {
  * @param {File} file - The video file to upload.
  * @param {string} language - The language category for organizing storage.
  * @param {string} documentName - The name of the document for naming the file.
- * @param {function} onProgress - Callback to track upload progress.
+ * @param {function} [onProgress] - (Optional) Callback to track upload progress.
  * @returns {Promise<string>} - The download URL of the uploaded video.
  */
-export const uploadVideo = (file, language, documentName, onProgress) => {
+export const uploadVideo = (file, language, documentName, onProgress = () => {}) => {
     return new Promise((resolve, reject) => {
         const storageRef = ref(storage, `videos/${language}/${documentName}/${file.name}`);
         const uploadTask = uploadBytesResumable(storageRef, file);
@@ -42,15 +46,16 @@ export const uploadVideo = (file, language, documentName, onProgress) => {
             },
             (error) => {
                 console.error('Upload failed:', error);
-                reject(error);
+                reject(new Error('Failed to upload video.'));
             },
             async () => {
                 try {
                     const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-                    console.log(`Video uploaded to: ${downloadURL}`);
+                    console.log(`Video uploaded successfully: ${downloadURL}`);
                     resolve(downloadURL);
                 } catch (err) {
-                    reject(err);
+                    console.error("Error retrieving download URL:", err);
+                    reject(new Error("Failed to retrieve video URL."));
                 }
             }
         );
@@ -64,7 +69,12 @@ export const uploadVideo = (file, language, documentName, onProgress) => {
  * @param {Object} data - The content data to upload.
  */
 export const uploadContent = async (language, documentName, data) => {
-    const contentRef = doc(db, `lessons/${language}/contentList/${documentName}`);
-    await setDoc(contentRef, data);
-    console.log(`Uploaded content to: lessons/${language}/contentList/${documentName}`);
+    try {
+        const contentRef = doc(db, `lessons/${language}/contentList/${documentName}`);
+        await setDoc(contentRef, data);
+        console.log(`Uploaded content successfully to: lessons/${language}/contentList/${documentName}`);
+    } catch (error) {
+        console.error("Error uploading content:", error);
+        throw new Error("Failed to upload content.");
+    }
 };
