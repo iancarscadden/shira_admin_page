@@ -1,5 +1,7 @@
+// src/MainPage.js
+
 import React, { useState } from 'react';
-import { checkOrCreateLanguageSection, uploadContent, uploadVideo } from './firebase/firebaseService';
+import { checkOrCreateLanguageSection, uploadContent } from './firebase/firebaseService';
 import Papa from 'papaparse'; // For parsing CSV files
 
 const MainPage = () => {
@@ -7,7 +9,9 @@ const MainPage = () => {
     const [contentNumber, setContentNumber] = useState('');
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
-    const [videoFile, setVideoFile] = useState(null);
+    const [youtubeUrl, setYoutubeUrl] = useState('');
+    const [videoStart, setVideoStart] = useState('');
+    const [videoEnd, setVideoEnd] = useState('');
     const [transcripts, setTranscripts] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,20 +36,31 @@ const MainPage = () => {
                     return;
                 }
 
-                const formattedTranscripts = data.map((row, index) => {
-                    if (!row.targetLanguage?.trim() || !row.nativeLanguage?.trim() || !row.startTime?.trim() || !row.endTime?.trim()) {
-                        throw new Error(`Missing field in CSV at row ${index + 1}. Ensure all columns are correctly filled.`);
-                    }
+                try {
+                    const formattedTranscripts = data.map((row, index) => {
+                        if (
+                            !row.targetLanguage?.trim() ||
+                            !row.nativeLanguage?.trim() ||
+                            !row.startTime?.trim() ||
+                            !row.endTime?.trim()
+                        ) {
+                            throw new Error(`Missing field in CSV at row ${index + 1}. Ensure all columns are correctly filled.`);
+                        }
 
-                    return {
-                        targetLanguage: row.targetLanguage.trim(),
-                        nativeLanguage: row.nativeLanguage.trim(),
-                        startTime: row.startTime.trim(),
-                        endTime: row.endTime.trim(),
-                    };
-                });
+                        // Optionally, validate the format of startTime and endTime here
 
-                setTranscripts(formattedTranscripts);
+                        return {
+                            targetLanguage: row.targetLanguage.trim(),
+                            nativeLanguage: row.nativeLanguage.trim(),
+                            startTime: row.startTime.trim(),
+                            endTime: row.endTime.trim(),
+                        };
+                    });
+
+                    setTranscripts(formattedTranscripts);
+                } catch (error) {
+                    alert(error.message);
+                }
             },
             error: (error) => {
                 alert('Failed to process CSV file. Please check the format.');
@@ -56,8 +71,32 @@ const MainPage = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
 
-        if (!language || !contentNumber || !title || !description || !videoFile || transcripts.length === 0) {
-            alert('Please fill in all fields and upload a CSV file.');
+        // Basic validation
+        if (
+            !language ||
+            !contentNumber ||
+            !title ||
+            !description ||
+            !youtubeUrl ||
+            !videoStart ||
+            !videoEnd ||
+            transcripts.length === 0
+        ) {
+            alert('Please fill in all fields, enter YouTube URL, specify video start and end times, and upload a CSV file.');
+            return;
+        }
+
+        // Validate YouTube URL format (basic check)
+        const youtubeRegex = /^(https?:\/\/)?(www\.youtube\.com|youtu\.?be)\/.+$/;
+        if (!youtubeRegex.test(youtubeUrl)) {
+            alert('Please enter a valid YouTube URL.');
+            return;
+        }
+
+        // Validate videoStart and videoEnd (format HH:MM:SS.mmm)
+        const timeRegex = /^(\d{2}:)?([0-5]?\d):([0-5]?\d)(\.\d{1,3})?$/;
+        if (!timeRegex.test(videoStart) || !timeRegex.test(videoEnd)) {
+            alert('Please enter valid video start and end times in HH:MM:SS.mmm format.');
             return;
         }
 
@@ -69,12 +108,12 @@ const MainPage = () => {
 
             await checkOrCreateLanguageSection(formattedLanguage);
 
-            const videoUrl = await uploadVideo(videoFile, formattedLanguage, documentName);
-
             const contentData = {
                 title: title.trim(),
                 description: description.trim(),
-                videoUrl,
+                youtubeUrl: youtubeUrl.trim(),
+                videoStart: videoStart.trim(),
+                videoEnd: videoEnd.trim(),
                 language: formattedLanguage,
                 contentNumber: parseInt(contentNumber, 10),
                 createdAt: new Date(),
@@ -88,13 +127,17 @@ const MainPage = () => {
 
             alert(`Content uploaded successfully to lessons/${formattedLanguage}/${documentName}`);
 
+            // Clear the form
             setLanguage('');
             setContentNumber('');
             setTitle('');
             setDescription('');
-            setVideoFile(null);
+            setYoutubeUrl('');
+            setVideoStart('');
+            setVideoEnd('');
             setTranscripts([]);
         } catch (error) {
+            console.error('Error uploading content:', error);
             alert('Failed to upload content. Please try again.');
         } finally {
             setIsSubmitting(false);
@@ -114,6 +157,8 @@ const MainPage = () => {
                         value={language}
                         onChange={(e) => setLanguage(e.target.value)}
                         required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="e.g., Spanish, French"
                     />
                 </div>
 
@@ -126,6 +171,8 @@ const MainPage = () => {
                         onChange={(e) => setContentNumber(e.target.value)}
                         required
                         min="1"
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="e.g., 1"
                     />
                 </div>
 
@@ -137,6 +184,8 @@ const MainPage = () => {
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
                         required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="Enter title"
                     />
                 </div>
 
@@ -147,20 +196,54 @@ const MainPage = () => {
                         value={description}
                         onChange={(e) => setDescription(e.target.value)}
                         required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px', height: '80px' }}
+                        placeholder="Enter description"
                     ></textarea>
                 </div>
 
+                {/* YouTube URL Field */}
                 <div style={{ marginBottom: '15px' }}>
-                    <label htmlFor="videoFile">Upload Video:</label>
+                    <label htmlFor="youtubeUrl">YouTube URL:</label>
                     <input
-                        type="file"
-                        id="videoFile"
-                        accept="video/*"
-                        onChange={(e) => setVideoFile(e.target.files[0])}
+                        type="url"
+                        id="youtubeUrl"
+                        value={youtubeUrl}
+                        onChange={(e) => setYoutubeUrl(e.target.value)}
                         required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="Enter YouTube video URL"
                     />
                 </div>
 
+                {/* Video Start Time Field */}
+                <div style={{ marginBottom: '15px' }}>
+                    <label htmlFor="videoStart">Video Start Time (HH:MM:SS.mmm):</label>
+                    <input
+                        type="text"
+                        id="videoStart"
+                        value={videoStart}
+                        onChange={(e) => setVideoStart(e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="e.g., 00:01:30.250"
+                    />
+                </div>
+
+                {/* Video End Time Field */}
+                <div style={{ marginBottom: '15px' }}>
+                    <label htmlFor="videoEnd">Video End Time (HH:MM:SS.mmm):</label>
+                    <input
+                        type="text"
+                        id="videoEnd"
+                        value={videoEnd}
+                        onChange={(e) => setVideoEnd(e.target.value)}
+                        required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
+                        placeholder="e.g., 00:05:00.500"
+                    />
+                </div>
+
+                {/* Transcript CSV Upload */}
                 <div style={{ marginBottom: '15px' }}>
                     <label htmlFor="csvFile">Upload Transcript CSV:</label>
                     <input
@@ -169,15 +252,29 @@ const MainPage = () => {
                         accept=".csv"
                         onChange={handleCsvUpload}
                         required
+                        style={{ width: '100%', padding: '10px', fontSize: '16px' }}
                     />
                 </div>
 
-                <button type="submit" disabled={isSubmitting}>
+                <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    style={{
+                        padding: '10px 20px',
+                        fontSize: '16px',
+                        cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                        backgroundColor: isSubmitting ? '#ccc' : '#28a745',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '4px',
+                    }}
+                >
                     {isSubmitting ? 'Submitting...' : 'Submit Content'}
                 </button>
             </form>
         </div>
     );
+
 };
 
 export default MainPage;
